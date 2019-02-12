@@ -22,5 +22,12 @@
         "psr-4": {
             "MgTools\\": "src/"
         }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "MgTools\\MgToolsServiceProvider"
+            ]
+        }
     }
 }
