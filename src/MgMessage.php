@@ -43,10 +43,9 @@ class MgMessage extends Model
     public static function add($campaignId, $recipient, $mailgunId, array $details)
     {
         $message = new self();
-        $message->campaign_id = $campaignId;
+        $message->mg_campaign_id = $campaignId;
         $message->recipient = $recipient;
         $message->mailgun_id = trim($mailgunId, "<> \r\n\t");
-        $message->details = $details;
         $message->save();
         return $message;
     }

@@ -71,12 +71,12 @@ class SendCampaign implements ShouldQueue
                     $message->campaign($campaign->id);
                     $message->tag([
                         'campaign-'.$campaign->id,
-                        'newsletter-'.$campaign->newsletter->id,
-                        'application-'.$campaign->newsletter->application->id
+//                        'newsletter-'.$campaign->newsletter->id,
+//                        'application-'.$campaign->newsletter->application->id
                     ]);
 
-                    $message->header('List-Unsubscribe', route('unsubscribe', $subscriber->getCampaignIdentifier($campaign)));
-                    $message->header('Content-Location', route('read', $subscriber->getCampaignIdentifier($campaign)));
+                    $message->header('List-Unsubscribe', route(config('mailgun.router.namedPrefix').'.unsubscribe', $subscriber->getCampaignIdentifier($campaign)));
+                    $message->header('Content-Location', route(config('mailgun.router.namedPrefix').'.read', $subscriber->getCampaignIdentifier($campaign)));
 
                     //                $message->header('Return-Receipt-To', '"'.$campaign->settings['replyToName'].'" <'.$campaign->settings['replyToEmail'].'>');
                     //                $message->header('Disposition-Notification-To', '"'.$campaign->settings['replyToName'].'" <'.$campaign->settings['replyToEmail'].'>');

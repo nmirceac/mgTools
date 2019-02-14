@@ -8,6 +8,14 @@ class MgMessageEvent extends Model
 
     protected $appends = ['event_name'];
 
+    const MG_EVENT_DELIVERED='delivered';
+    const MG_EVENT_DROPPED='dropped';
+    const MG_EVENT_BOUNCED='bounced';
+    const MG_EVENT_SPAM='complained';
+    const MG_EVENT_CLICKED='clicked';
+    const MG_EVENT_OPENED='opened';
+    const MG_EVENT_UNSUBSCRIBED='unsubscribed';
+
     const EVENT_DELIVERED=1;
     const EVENT_DROPPED=2;
     const EVENT_BOUNCED=3;
@@ -15,6 +23,12 @@ class MgMessageEvent extends Model
     const EVENT_CLICKED=5;
     const EVENT_OPENED=6;
     const EVENT_UNSUBSCRIBED=7;
+
+    const EXCEPTION_EMPTY_WEBHOOK_DATA = 0;
+    const EXCEPTION_MISSING_WEBHOOK_SIGNATURE = 1;
+    const EXCEPTION_MISSING_WEBHOOK_SIGNATURE_DATA = 2;
+    const EXCEPTION_INVALID_WEBHOOK_SIGNATURE = 3;
+    const EXCEPTION_MISSING_EVENT_DATA = 4;
 
     public function getDetailsAttribute($value)
     {
@@ -79,7 +93,7 @@ class MgMessageEvent extends Model
 
     public static function getTimeIntervalQuery($timeInterval = 3600)
     {
-        $query = MessageEvent::query();
+        $query = MgMessageEvent::query();
         $query->select(\DB::raw('FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP (`timestamp`)/'.$timeInterval.')*'.$timeInterval.') as `interval`'), \DB::raw('count(*) as count'), 'event');
         $query->groupBy('interval');
         return $query;
@@ -93,91 +107,59 @@ class MgMessageEvent extends Model
     public static function checkWebhookData(array $webhookData)
     {
         if(empty($webhookData)) {
-            return false;
+            throw new \Exception('Empty webhook data', self::EXCEPTION_EMPTY_WEBHOOK_DATA);
+        }
+        if(!isset($webhookData['signature'])) {
+            throw new \Exception('Missing webhook signature', self::EXCEPTION_MISSING_WEBHOOK_SIGNATURE);
         }
 
-        if(!isset($webhookData['signature']) or !isset($webhookData['timestamp']) or !isset($webhookData['token'])) {
-            return false;
+        $signature = $webhookData['signature'];
+        if(!isset($signature['timestamp']) or !isset($signature['token']) or !isset($signature['signature'])) {
+            throw new \Exception('Missing webhook signature data', self::EXCEPTION_MISSING_WEBHOOK_SIGNATURE_DATA);
         }
 
         $calculatedSignature = hash_hmac(
             'sha256',
-            sprintf('%s%s', $webhookData['timestamp'], $webhookData['token']),
-            config('services.mailgun.secret')
+            sprintf('%s%s', $signature['timestamp'], $signature['token']),
+            config('mailgun.api_key')
         );
-        if($webhookData['signature'] != $calculatedSignature) {
-            return false;
+        if($signature['signature'] != $calculatedSignature) {
+            throw new \Exception('Invalid webhook signature', self::EXCEPTION_INVALID_WEBHOOK_SIGNATURE);
         }
-        unset($webhookData['signature']);
-        unset($webhookData['timestamp']);
-        unset($webhookData['token']);
 
-        if(isset($webhookData['event'])) {
-            unset($webhookData['event']);
+        if(!isset($webhookData['event-data'])) {
+            throw new \Exception('Missing event data', self::EXCEPTION_MISSING_EVENT_DATA);
         }
-        if(isset($webhookData['domain'])) {
-            unset($webhookData['domain']);
-        }
-        if(isset($webhookData['tags'])) {
-            unset($webhookData['tags']);
-        }
-        if(isset($webhookData['tag'])) {
-            unset($webhookData['tag']);
-        }
-        if(isset($webhookData['event-timestamp'])) {
-            $datetime = date('Y-m-d H:i:s', ceil($webhookData['event-timestamp']));
-            unset($webhookData['event-timestamp']);
-            unset($webhookData['timestamp']);
-        } else if(isset($webhookData['timestamp'])) {
-            $datetime = date('Y-m-d H:i:s', ceil($webhookData['timestamp']));
-            unset($webhookData['timestamp']);
-        } else {
-            $datetime = date('Y-m-d H:i:s');
-        }
-        $webhookData['timestamp'] = $datetime;
 
-        ksort($webhookData);
 
-        return $webhookData;
+        return self::checkEventData($webhookData['event-data']);
     }
 
     public static function checkEventData($eventData)
     {
-        $eventData = json_decode(json_encode($eventData), true);
-        if(isset($eventData['tags'])) {
-            unset($eventData['tags']);
+        if(is_string($eventData)) {
+            $eventData = json_decode(json_encode($eventData), true);
         }
-        if(isset($eventData['campaigns'])) {
-            unset($eventData['campaigns']);
-        }
-        if(isset($eventData['user-variables'])) {
-            unset($eventData['user-variables']);
-        }
-        if(isset($eventData['recipient-domain'])) {
-            unset($eventData['recipient-domain']);
-        }
-        if(isset($eventData['log-level'])) {
-            unset($eventData['log-level']);
-        }
-        if(isset($eventData['id'])) {
-            unset($eventData['id']);
-        }
+
         if(isset($eventData['message']['headers']['message-id'])) {
             $eventData['message-id'] = $eventData['message']['headers']['message-id'];
             unset($eventData['message']);
         }
 
-
-
-        foreach($eventData as $eventParam=>$eventValue) {
-            if(is_array($eventValue)) {
-                $eventData = array_merge($eventData, $eventValue);
-            }
-        }
-
-        foreach($eventData as $eventParam=>$eventValue) {
-            if(is_array($eventValue)) {
-                unset($eventData[$eventParam]);
+        foreach([
+                    'id',
+                    'domain',
+                    'tags',
+                    'tag',
+                    'user-variables',
+                    'campaigns',
+                    'envelope',
+                    'log-level',
+                    'message',
+                    'recipient-domain',
+                ] as $param) {
+            if(isset($eventData[$param])) {
+                unset($eventData[$param]);
             }
         }
 
@@ -194,44 +176,45 @@ class MgMessageEvent extends Model
         $eventData['timestamp'] = $datetime;
 
         ksort($eventData);
+
         return $eventData;
     }
 
-    public static function checkForDuplicates(array $webhookData, $method)
+    public static function checkForDuplicates(array $webhookData)
     {
         $message = MgMessage::findFromWebookData($webhookData);
         if(!is_null($message)) {
-            $eventType = null;
-            switch ($method) {
-                case 'delivered':
-                    $eventType = MessageEvent::EVENT_DELIVERED;
-                    break;
+            $eventType = self::getEventType($webhookData);
+//            switch ($method) {
+//                case 'delivered':
+//                    $eventType = MessageEvent::EVENT_DELIVERED;
+//                    break;
+//
+//                case 'failed':
+//                    $eventType = MessageEvent::EVENT_DROPPED;
+//                    break;
+//
+//                case 'rejected':
+//                    $eventType = MessageEvent::EVENT_BOUNCED;
+//                    break;
+//
+//                case 'complained':
+//                    $eventType = MessageEvent::EVENT_SPAM;
+//                    break;
+//
+//                case 'clicked':
+//                    $eventType = MessageEvent::EVENT_CLICKED;
+//                    break;
+//
+//                case 'opened':
+//                    $eventType = MessageEvent::EVENT_OPENED;
+//                    break;
+//
+//                default:
+//                    break;
+//            }
 
-                case 'failed':
-                    $eventType = MessageEvent::EVENT_DROPPED;
-                    break;
-
-                case 'rejected':
-                    $eventType = MessageEvent::EVENT_BOUNCED;
-                    break;
-
-                case 'complained':
-                    $eventType = MessageEvent::EVENT_SPAM;
-                    break;
-
-                case 'clicked':
-                    $eventType = MessageEvent::EVENT_CLICKED;
-                    break;
-
-                case 'opened':
-                    $eventType = MessageEvent::EVENT_OPENED;
-                    break;
-
-                default:
-                    break;
-            }
-
-            $matches = MessageEvent::where('message_id', $message->id)
+            $matches = MgMessageEvent::where('mg_message_id', $message->id)
                 ->where('event', $eventType)
                 ->where('timestamp', '>=', date('Y-m-d H:i:s', strtotime($webhookData['timestamp']) - 1))
                 ->where('timestamp', '<=', date('Y-m-d H:i:s', strtotime($webhookData['timestamp']) + 1))
@@ -243,39 +226,89 @@ class MgMessageEvent extends Model
         }
     }
 
-    public static function add($eventType, array $webhookData)
+    public static function getEventType(array &$webhookData) {
+        $mailgunEventType = $webhookData['event'];
+        unset($webhookData['event']);
+        if($mailgunEventType=='failed') {
+            if(isset($webhookData['severity'])) {
+                if($webhookData['severity']=='temporary') {
+                    $mailgunEventType='bounced';
+                } else {
+                    $mailgunEventType='dropped';
+                }
+                unset($webhookData['severity']);
+            } else {
+                $mailgunEventType='dropped';
+            }
+        }
+
+        switch ($mailgunEventType) {
+            case self::MG_EVENT_DELIVERED :
+                $eventType = self::EVENT_DELIVERED;
+                break;
+
+            case self::MG_EVENT_DROPPED :
+                $eventType = self::EVENT_DROPPED;
+                break;
+
+            case self::MG_EVENT_BOUNCED :
+                $eventType = self::EVENT_BOUNCED;
+                break;
+
+            case self::MG_EVENT_SPAM :
+                $eventType = self::EVENT_SPAM;
+                break;
+
+            case self::MG_EVENT_CLICKED :
+                $eventType = self::EVENT_CLICKED;
+                break;
+
+            case self::MG_EVENT_OPENED :
+                $eventType = self::EVENT_OPENED;
+                break;
+
+            default:
+                break;
+        }
+
+        return $eventType;
+    }
+
+    public static function add(array $webhookData)
     {
+        $eventType = self::getEventType($webhookData);
+
         $timestamp = $webhookData['timestamp'];
         unset($webhookData['timestamp']);
 
         $message = MgMessage::findFromWebookData($webhookData);
 
         if($message) {
-            $messageRecipient = $message->email;
+            $messageRecipient = $message->recipient;
             $messageId = $message->id;
 
             switch ($eventType) {
-                case MgMessageEvent::EVENT_DELIVERED :
+                case self::EVENT_DELIVERED :
                     $message->delivered = true;
                     break;
 
-                case MgMessageEvent::EVENT_DROPPED :
+                case self::EVENT_DROPPED :
                     $message->dropped = true;
                     break;
 
-                case MgMessageEvent::EVENT_BOUNCED :
+                case self::EVENT_BOUNCED :
                     $message->bounced = true;
                     break;
 
-                case MgMessageEvent::EVENT_SPAM :
+                case self::EVENT_SPAM :
                     $message->spam = true;
                     break;
 
-                case MgMessageEvent::EVENT_CLICKED :
+                case self::EVENT_CLICKED :
                     $message->clicked = true;
                     break;
 
-                case MgMessageEvent::EVENT_OPENED :
+                case self::EVENT_OPENED :
                     $message->opened = true;
                     break;
 
@@ -285,12 +318,12 @@ class MgMessageEvent extends Model
 
             $message->save();
         } else {
-            $messageRecipient = 0;
-            $messageId = 0;
+            $messageRecipient = $webhookData['recipient'];
+            $messageId = null;
         }
 
         $existing = MgMessageEvent::where('event', $eventType)
-            ->where('message_id', $messageId)
+            ->where('mg_message_id', $messageId)
             ->where('recipient', $messageRecipient)
             ->where('timestamp', $timestamp)
             ->first();
@@ -301,7 +334,7 @@ class MgMessageEvent extends Model
 
         $messageEvent = new MgMessageEvent();
         $messageEvent->recipient = $messageRecipient;
-        $messageEvent->message_id = $messageId;
+        $messageEvent->mg_message_id = $messageId;
         $messageEvent->event = $eventType;
         $messageEvent->details = $webhookData;
         $messageEvent->timestamp = $timestamp;
@@ -314,13 +347,13 @@ class MgMessageEvent extends Model
     {
         $messageEvent = new MgMessageEvent();
         $messageEvent->event = MgMessageEvent::EVENT_UNSUBSCRIBED;
-        $message = MgMessage::where('campaign_id', $campaign->id)
+        $message = MgMessage::where('mg_campaign_id', $campaign->id)
             ->where('recipient', $subscriber->email)
             ->first();
 
         if($message) {
             $messageEvent->recipient = $message->email;
-            $messageEvent->message_id = $message->id;
+            $messageEvent->mg_message_id = $message->id;
             $message->unsubscribed = true;
             $message->save();
         }
