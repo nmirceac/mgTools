@@ -21,8 +21,6 @@ class CreateMgSubscribers extends Migration
             $table->tinyInteger('state')->index()->default(0);
             $table->text('details');
             $table->timestamps();
-
-
         });
     }
 
