@@ -16,7 +16,6 @@ class CreateMgMessages extends Migration
         Schema::create('mg_messages', function (Blueprint $table) {
             $table->increments('id');
             $table->integer('mg_campaign_id', false, true)->nullable()->index();
-            $table->foreign('mg_campaign_id')->references('id')->on('mg_campaigns')->onDelete('cascade');
             $table->string('recipient', 96)->index();
             $table->string('mailgun_id', 96)->index();
             $table->boolean('delivered')->default(false)->index();

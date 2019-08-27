@@ -18,7 +18,6 @@ class CreateMgMessageEvents extends Migration
             $table->tinyInteger('event')->index();
             $table->string('recipient', 96)->index();
             $table->integer('mg_message_id', false, true)->nullable()->index();
-            $table->foreign('mg_message_id')->references('id')->on('mg_messages')->onDelete('cascade');
             $table->text('details');
             $table->dateTime('timestamp');
         });

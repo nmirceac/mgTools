@@ -27,17 +27,17 @@ class MgMessage extends Model
 
     public function events()
     {
-        return $this->hasMany(\App\MgMessageEvent::class);
+        return $this->hasMany(\App\MessageEvent::class);
     }
 
     public function subscriber()
     {
-        return $this->belongsTo(\App\MgSubscriber::class);
+        return $this->belongsTo(\App\Subscriber::class);
     }
 
     public function campaign()
     {
-        return $this->belongsTo(\App\MgCampaign::class);
+        return $this->belongsTo(\App\Campaign::class);
     }
 
     public static function add($campaignId, $recipient, $mailgunId, array $details)
