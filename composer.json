@@ -15,10 +15,8 @@
     ],
     "require": {
         "php": ">=5.4.0",
-        "nesbot/carbon": "^1.35",
         "bogardo/mailgun": "^5.0",
-        "php-http/guzzle6-adapter": "^1.1",
-        "phpunit/phpunit": "6 - 8"
+        "php-http/guzzle6-adapter": "^1.1"
     },
     "autoload": {
         "psr-4": {
