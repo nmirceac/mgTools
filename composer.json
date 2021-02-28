@@ -15,8 +15,8 @@
     ],
     "require": {
         "php": ">=5.4.0",
-        "bogardo/mailgun": "^5.0",
-        "php-http/guzzle6-adapter": "^1.1"
+        "nmirceac/mailgun": "*",
+        "php-http/guzzle6-adapter": "*"
     },
     "autoload": {
         "psr-4": {
