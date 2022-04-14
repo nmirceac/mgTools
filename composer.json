@@ -15,7 +15,7 @@
     ],
     "require": {
         "php": ">=5.4.0",
-        "nmirceac/mailgun": "*",
+        "nmirceac/mailgun": "*"
     },
     "autoload": {
         "psr-4": {
