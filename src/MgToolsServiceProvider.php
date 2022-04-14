@@ -19,7 +19,7 @@ class MgToolsServiceProvider extends ServiceProvider
 
             $router->prefix(config('mailgun.router.prefix'))
                 ->namespace('MgTools\Http\Controllers')
-                ->middleware(['api'])
+                ->middleware([])
                 ->group(__DIR__.'/Http/api.php');
         }
 

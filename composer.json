@@ -16,7 +16,6 @@
     "require": {
         "php": ">=5.4.0",
         "nmirceac/mailgun": "*",
-        "php-http/guzzle6-adapter": "*"
     },
     "autoload": {
         "psr-4": {
