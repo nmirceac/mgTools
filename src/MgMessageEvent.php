@@ -123,7 +123,7 @@ class MgMessageEvent extends Model
             sprintf('%s%s', $signature['timestamp'], $signature['token']),
             config('mailgun.api_key')
         );
-        if($signature['signature'] != $calculatedSignature) {
+        if(!(config('mailgun.ignore_webhook_signature') or $signature['signature'] == $calculatedSignature)) {
             throw new \Exception('Invalid webhook signature', self::EXCEPTION_INVALID_WEBHOOK_SIGNATURE);
         }
 

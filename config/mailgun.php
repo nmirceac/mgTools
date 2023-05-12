@@ -25,7 +25,7 @@ return [
     'reply_to' => env('MAILGUN_REPLY_TO', ''),
     'force_from_address' => env('MAILGUN_FORCE_FROM_ADRESS', false),
     'catch_all' => env('MAILGUN_CATCH_ALL', ''),
-    'testmode' => env('MAILGUN_TESTMODE', false)
-
+    'ignore_webhook_signature' => env('MAILGUN_IGNORE_WEBHOOK_SIGNATURE', false),
+    'testmode' => env('MAILGUN_TESTMODE', false),
 ];
 
